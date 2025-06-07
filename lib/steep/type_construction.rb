@@ -2104,7 +2104,40 @@ module Steep
               if exn_classes
                 case exn_classes.type
                 when :array
-                  exn_types = exn_classes.children.map {|child| synthesize(child).type }
+                  exn_types = [] #: Array[::Steep::AST::Types::t | nil]
+                  exn_classes.children.each do |child|
+                    case child.type
+                    when :splat
+                      # Handle splat operator in rescue clause, e.g., rescue *ERRORS => e
+                      splat_operand = child.children[0]
+                      if splat_operand
+                        array_type = synthesize(splat_operand).type
+                        # Extract element types from Array type
+                        case
+                        when array_type.is_a?(AST::Types::Name::Instance) && array_type.name == AST::Builtin::Array.module_name
+                          # Array[A] -> [A]
+                          if array_type.args.size == 1
+                            element_type = array_type.args[0]
+                            if element_type.is_a?(AST::Types::Union)
+                              exn_types.concat(element_type.types)
+                            else
+                              exn_types << element_type
+                            end
+                          else
+                            exn_types << AST::Builtin.any_type
+                          end
+                        else
+                          # Fallback to any_type if we can't extract array element types
+                          exn_types << AST::Builtin.any_type
+                        end
+                      else
+                        exn_types << AST::Builtin.any_type
+                      end
+                    else
+                      # Regular exception class
+                      exn_types << synthesize(child).type
+                    end
+                  end
                 else
                   Steep.logger.error "Unexpected exception list: #{exn_classes.type}"
                 end

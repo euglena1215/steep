@@ -295,6 +295,8 @@ class TypeConstructionTest < Minitest::Test
 
   def test_rescue_binding_typing: () -> untyped
 
+  def test_rescue_splat_binding_typing: () -> untyped
+
   def test_string_or_true_false: () -> untyped
 
   def test_type_case_case_when: () -> untyped

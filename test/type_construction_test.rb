@@ -3148,6 +3148,54 @@ EOF
     end
   end
 
+  def test_rescue_splat_binding_typing
+    with_checker(<<RBS) do |checker|
+class FooError < StandardError
+end
+
+class BarError < StandardError  
+end
+
+type errors_type = Array[singleton(FooError) | singleton(BarError)]
+RBS
+      source = parse_ruby(<<EOF)
+# @type const ERRORS: Array[singleton(FooError) | singleton(BarError)]
+ERRORS = [FooError, BarError]
+
+begin
+  1
+rescue *ERRORS => e
+  # e should have type (FooError | BarError)
+  e
+end
+EOF
+
+      with_standard_construction(checker, source) do |construction, typing|
+        pair = construction.synthesize(source.node)
+        
+        # Check that rescue variable has correct union type
+        var_type = pair.context.type_env[:e]
+        
+        assert_no_error typing
+        refute_nil var_type
+        
+        # The variable e should have type (FooError | BarError | nil)
+        assert_instance_of AST::Types::Union, var_type
+        assert_equal 3, var_type.types.size
+        
+        # Check that the types include FooError and BarError instances
+        instance_types = var_type.types.select { |t| t.is_a?(AST::Types::Name::Instance) }
+        assert_equal 2, instance_types.size
+        
+        type_names = instance_types.map { |t| t.name.to_s }.sort
+        assert_equal ["::BarError", "::FooError"], type_names
+        
+        # Check that nil is also included (this is existing Steep behavior)
+        assert var_type.types.any? { |t| t.is_a?(AST::Types::Nil) }
+      end
+    end
+  end
+
   def test_string_or_true_false
     with_checker do |checker|
       source = parse_ruby(<<EOF)
